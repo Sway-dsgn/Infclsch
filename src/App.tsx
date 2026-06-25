@@ -390,7 +390,7 @@ export default function App() {
           const results = await searchInstagramProfiles(
             apifyApiKey,
             selectedCategories,
-            userLocation,
+            getRotatedLocation(userLocation),
             selectedPlatform === 'TikTok' ? 'TikTok' : 'Instagram'
           );
           if (results.length > 0) {
@@ -424,6 +424,27 @@ export default function App() {
       setLoading(false);
     }, 5400);
   };
+
+  const nearbyAreas: Record<string, string[]> = {
+    'Solo (Surakarta)': ['Solo', 'Kartasura', 'Sukoharjo', 'Boyolali', 'Klaten', 'Karanganyar', 'Wonogiri', 'Sragen'],
+    'Surakarta': ['Solo', 'Kartasura', 'Sukoharjo', 'Boyolali', 'Klaten', 'Karanganyar', 'Wonogiri', 'Sragen'],
+    'Yogyakarta': ['Yogyakarta', 'Sleman', 'Bantul', 'Kulon Progo', 'Gunung Kidul'],
+    'Semarang': ['Semarang', 'Ungaran', 'Kendal', 'Demak', 'Mranggen'],
+    'Bandung': ['Bandung', 'Cimahi', 'Lembang', 'Soreang', 'Cileunyi', 'Majalaya', 'Rancaekek'],
+    'Jakarta': ['Jakarta', 'Jakarta Selatan', 'Jakarta Pusat', 'Jakarta Utara', 'Jakarta Barat', 'Jakarta Timur'],
+    'Surabaya': ['Surabaya', 'Sidoarjo', 'Gresik', 'Mojokerto', 'Bangkalan'],
+    'Malang': ['Malang', 'Batu', 'Kepanjen', 'Singosari', 'Lawang', 'Tumpang'],
+  };
+
+  const searchLocationIndexRef = useRef(0);
+
+  function getRotatedLocation(baseLocation: string): string {
+    const areas = nearbyAreas[baseLocation];
+    if (!areas) return baseLocation;
+    const idx = searchLocationIndexRef.current % areas.length;
+    searchLocationIndexRef.current++;
+    return areas[idx];
+  }
 
   // Autodetect location using browser geolocation
   const handleDetectLocation = () => {
