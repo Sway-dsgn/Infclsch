@@ -3,24 +3,23 @@ import type { Influencer } from '../types';
 const APIFY_SEARCH_ACTOR = 'apify~instagram-search-scraper';
 const APIFY_API_BASE = 'https://api.apify.com/v2';
 
-const randomModifiers = [
-  'terbaik', 'populer', 'viral', 'keren', 'hits',
-  'kekinian', 'terkenal', 'favorit', 'top', 'seru',
-  'aktif', 'berpengaruh', 'kreatif', 'asli', 'lokal',
-  'tiktok', 'story', 'reels', 'konten', 'daily',
-];
+let searchOffset = 0;
 
-let searchCounter = 0;
-
-function pickRandomModifier(): string {
-  searchCounter++;
-  return randomModifiers[searchCounter % randomModifiers.length];
-}
-
-async function runApifySearch(
+export async function searchInstagramProfiles(
   apiToken: string,
-  queries: string[]
-): Promise<any[]> {
+  searchTerms: string[],
+  location: string,
+  platform: 'Instagram' | 'TikTok'
+): Promise<Influencer[]> {
+  if (!apiToken) throw new Error('Apify API token tidak tersedia');
+
+  const queries = searchTerms.length > 0
+    ? searchTerms.map(t => `${t} ${location}`)
+    : [`influencer ${location}`];
+
+  const offset = searchOffset;
+  searchOffset += 5;
+
   const actorRunUrl = `${APIFY_API_BASE}/acts/${APIFY_SEARCH_ACTOR}/runs?token=${apiToken}`;
 
   const response = await fetch(actorRunUrl, {
@@ -29,7 +28,8 @@ async function runApifySearch(
     body: JSON.stringify({
       searchTerms: queries,
       searchType: 'user',
-      limit: 10,
+      limit: 5,
+      resultsOffset: offset,
     }),
   });
 
@@ -45,6 +45,8 @@ async function runApifySearch(
   const startTime = Date.now();
   const TIMEOUT = 120_000;
 
+  let datasetItems: any[] = [];
+
   while (Date.now() - startTime < TIMEOUT) {
     await new Promise(r => setTimeout(r, 3000));
 
@@ -58,45 +60,15 @@ async function runApifySearch(
       const datasetRes = await fetch(
         `${APIFY_API_BASE}/actor-runs/${runId}/output/dataset/items?token=${apiToken}`
       );
-      return await datasetRes.json();
+      datasetItems = await datasetRes.json();
+      break;
     } else if (status === 'FAILED' || status === 'ABORTED' || status === 'TIMED-OUT') {
       throw new Error(`Apify run gagal dengan status: ${status}`);
     }
   }
 
-  throw new Error('Apify run timeout');
-}
-
-export async function searchInstagramProfiles(
-  apiToken: string,
-  searchTerms: string[],
-  location: string,
-  platform: 'Instagram' | 'TikTok'
-): Promise<Influencer[]> {
-  if (!apiToken) throw new Error('Apify API token tidak tersedia');
-
-  const modifier = pickRandomModifier();
-  const baseQueries = searchTerms.length > 0
-    ? searchTerms.map(t => `${t} ${location}`)
-    : [`influencer ${location}`];
-  const variedQueries = baseQueries.map(q => `${q} ${modifier}`);
-
-  let datasetItems: any[] = [];
-  try {
-    datasetItems = await runApifySearch(apiToken, variedQueries);
-  } catch {
-    // fallback to base query if modifier fails
-  }
-
   if (datasetItems.length === 0) {
-    try {
-      datasetItems = await runApifySearch(apiToken, baseQueries);
-    } catch (err: any) {
-      throw new Error(err.message || 'Apify scrape gagal');
-    }
-  }
-
-  if (datasetItems.length === 0) {
+    searchOffset = 0;
     throw new Error('Apify tidak mengembalikan data apapun');
   }
 
