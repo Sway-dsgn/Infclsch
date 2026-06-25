@@ -10,23 +10,17 @@ const randomModifiers = [
   'tiktok', 'story', 'reels', 'konten', 'daily',
 ];
 
+let searchCounter = 0;
+
 function pickRandomModifier(): string {
-  return randomModifiers[Math.floor(Math.random() * randomModifiers.length)];
+  searchCounter++;
+  return randomModifiers[searchCounter % randomModifiers.length];
 }
 
-export async function searchInstagramProfiles(
+async function runApifySearch(
   apiToken: string,
-  searchTerms: string[],
-  location: string,
-  platform: 'Instagram' | 'TikTok'
-): Promise<Influencer[]> {
-  if (!apiToken) throw new Error('Apify API token tidak tersedia');
-
-  const modifier = pickRandomModifier();
-  const queries = searchTerms.length > 0
-    ? searchTerms.map(t => `${t} ${location} ${modifier}`)
-    : [`influencer ${location} ${modifier}`];
-
+  queries: string[]
+): Promise<any[]> {
   const actorRunUrl = `${APIFY_API_BASE}/acts/${APIFY_SEARCH_ACTOR}/runs?token=${apiToken}`;
 
   const response = await fetch(actorRunUrl, {
@@ -51,8 +45,6 @@ export async function searchInstagramProfiles(
   const startTime = Date.now();
   const TIMEOUT = 120_000;
 
-  let datasetItems: any[] = [];
-
   while (Date.now() - startTime < TIMEOUT) {
     await new Promise(r => setTimeout(r, 3000));
 
@@ -66,10 +58,41 @@ export async function searchInstagramProfiles(
       const datasetRes = await fetch(
         `${APIFY_API_BASE}/actor-runs/${runId}/output/dataset/items?token=${apiToken}`
       );
-      datasetItems = await datasetRes.json();
-      break;
+      return await datasetRes.json();
     } else if (status === 'FAILED' || status === 'ABORTED' || status === 'TIMED-OUT') {
       throw new Error(`Apify run gagal dengan status: ${status}`);
+    }
+  }
+
+  throw new Error('Apify run timeout');
+}
+
+export async function searchInstagramProfiles(
+  apiToken: string,
+  searchTerms: string[],
+  location: string,
+  platform: 'Instagram' | 'TikTok'
+): Promise<Influencer[]> {
+  if (!apiToken) throw new Error('Apify API token tidak tersedia');
+
+  const modifier = pickRandomModifier();
+  const baseQueries = searchTerms.length > 0
+    ? searchTerms.map(t => `${t} ${location}`)
+    : [`influencer ${location}`];
+  const variedQueries = baseQueries.map(q => `${q} ${modifier}`);
+
+  let datasetItems: any[] = [];
+  try {
+    datasetItems = await runApifySearch(apiToken, variedQueries);
+  } catch {
+    // fallback to base query if modifier fails
+  }
+
+  if (datasetItems.length === 0) {
+    try {
+      datasetItems = await runApifySearch(apiToken, baseQueries);
+    } catch (err: any) {
+      throw new Error(err.message || 'Apify scrape gagal');
     }
   }
 
