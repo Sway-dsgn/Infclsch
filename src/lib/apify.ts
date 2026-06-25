@@ -3,8 +3,6 @@ import type { Influencer } from '../types';
 const APIFY_SEARCH_ACTOR = 'apify~instagram-search-scraper';
 const APIFY_API_BASE = 'https://api.apify.com/v2';
 
-let searchOffset = 0;
-
 export async function searchInstagramProfiles(
   apiToken: string,
   searchTerms: string[],
@@ -17,9 +15,6 @@ export async function searchInstagramProfiles(
     ? searchTerms.map(t => `${t} ${location}`)
     : [`influencer ${location}`];
 
-  const offset = searchOffset;
-  searchOffset += 5;
-
   const actorRunUrl = `${APIFY_API_BASE}/acts/${APIFY_SEARCH_ACTOR}/runs?token=${apiToken}`;
 
   const response = await fetch(actorRunUrl, {
@@ -28,8 +23,7 @@ export async function searchInstagramProfiles(
     body: JSON.stringify({
       searchTerms: queries,
       searchType: 'user',
-      limit: 5,
-      resultsOffset: offset,
+      limit: 10,
     }),
   });
 
@@ -68,7 +62,6 @@ export async function searchInstagramProfiles(
   }
 
   if (datasetItems.length === 0) {
-    searchOffset = 0;
     throw new Error('Apify tidak mengembalikan data apapun');
   }
 

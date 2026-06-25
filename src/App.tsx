@@ -410,6 +410,15 @@ export default function App() {
 
     await Promise.all(promises);
 
+    setCreators(prev => {
+      const shuffled = [...prev];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      return shuffled;
+    });
+
     setTimeout(() => {
       clearInterval(timer);
       setLoading(false);
