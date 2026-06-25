@@ -336,6 +336,7 @@ export default function App() {
     setLoading(true);
     setLoadingStep(0);
     setSearchTriggered(true);
+    setCreators([]);
 
     const timer = setInterval(() => {
       setLoadingStep(prev => {
@@ -394,9 +395,10 @@ export default function App() {
           );
           if (results.length > 0) {
             setCreators(prev => {
-              const existing = new Set(prev.map(c => c.id));
+              const nonApify = prev.filter(c => !c.id.startsWith('apify-'));
+              const existing = new Set(nonApify.map(c => c.id));
               const newOnes = results.filter(r => !existing.has(r.id));
-              return [...prev, ...newOnes];
+              return [...nonApify, ...newOnes];
             });
             triggerNotification(`${results.length} kreator dari scraping Apify!`);
           }
