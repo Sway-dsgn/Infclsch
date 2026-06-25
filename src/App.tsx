@@ -34,7 +34,7 @@ export default function App() {
   });
 
   // --- APPLICATION STATES ---
-  const [activeTab, setActiveTab] = useState<'eksplorasi' | 'kerjasama'>('eksplorasi');
+  const [activeTab, setActiveTab] = useState<'eksplorasi' | 'kerjasama' | 'favorit'>('eksplorasi');
   const [showPrintView, setShowPrintView] = useState<boolean>(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -64,6 +64,7 @@ export default function App() {
 
   // Loading & Results
   const [loading, setLoading] = useState<boolean>(false);
+  const [apifyLoading, setApifyLoading] = useState<boolean>(false);
   const [loadingStep, setLoadingStep] = useState<number>(0);
   const [creators, setCreators] = useState<Influencer[]>([]);
   const [currentPageNum, setCurrentPageNum] = useState<number>(1);
@@ -93,6 +94,26 @@ export default function App() {
 
   // Saved collaborations (persisted in localStorage)
   const [collaborations, setCollaborations] = useState<SavedCollaboration[]>([]);
+
+  // Favorites (persisted in localStorage)
+  const [favorites, setFavorites] = useState<Influencer[]>(() => {
+    try {
+      const stored = localStorage.getItem('influx_favorites');
+      return stored ? JSON.parse(stored) : [];
+    } catch { return []; }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('influx_favorites', JSON.stringify(favorites));
+  }, [favorites]);
+
+  const toggleFavorite = (influencer: Influencer) => {
+    setFavorites(prev => {
+      const exists = prev.some(f => f.id === influencer.id);
+      if (exists) return prev.filter(f => f.id !== influencer.id);
+      return [influencer, ...prev];
+    });
+  };
 
   // DM modal trigger
   const [activeDMInfluencer, setActiveDMInfluencer] = useState<Influencer | null>(null);
@@ -124,11 +145,16 @@ export default function App() {
   // Reset to page 1 when filters change
   useEffect(() => { setCurrentPageNum(1); }, [selectedPlatform, minFollowers, selectedCategories]);
 
+  const [apifyApiKey, setApifyApiKey] = useState<string>(() => {
+    return localStorage.getItem('apify_api_key') || '';
+  });
+
   const [showApiKeyModal, setShowApiKeyModal] = useState<boolean>(false);
   const [tempProvider, setTempProvider] = useState<string>('gemini');
   const [tempApiKey, setTempApiKey] = useState<string>('');
   const [tempBaseUrl, setTempBaseUrl] = useState<string>('https://api.openai.com/v1');
   const [tempModel, setTempModel] = useState<string>('meta-llama/llama-3-8b-instruct');
+  const [tempApifyKey, setTempApifyKey] = useState<string>('');
 
   const handleSaveApiConfig = (provider: string, key: string, baseUrl: string, model: string) => {
     setAiProvider(provider);
@@ -347,6 +373,42 @@ export default function App() {
         clearInterval(timer);
         setLoading(false);
       }, 5400);
+    }
+  };
+
+  // Apify search handler
+  const handleApifySearch = async () => {
+    if (!apifyApiKey) {
+      triggerNotification('Atur Apify API token di Pengaturan API terlebih dahulu.');
+      setShowApiKeyModal(true);
+      return;
+    }
+    setApifyLoading(true);
+    triggerNotification('Memulai scraping via Apify...');
+    try {
+      const { searchInstagramProfiles } = await import('./lib/apify');
+      const results = await searchInstagramProfiles(
+        apifyApiKey,
+        selectedCategories,
+        userLocation,
+        selectedPlatform === 'TikTok' ? 'TikTok' : 'Instagram'
+      );
+      if (results.length > 0) {
+        setCreators(prev => {
+          const existing = new Set(prev.map(c => c.id));
+          const newOnes = results.filter(r => !existing.has(r.id));
+          return [...prev, ...newOnes];
+        });
+        setSearchTriggered(true);
+        setCurrentPageNum(1);
+        triggerNotification(`${results.length} kreator berhasil di-scrape dari Apify!`);
+      } else {
+        triggerNotification('Apify tidak menemukan kreator baru.');
+      }
+    } catch (err: any) {
+      triggerNotification('Gagal scraping Apify: ' + (err.message || 'Unknown error'));
+    } finally {
+      setApifyLoading(false);
     }
   };
 
@@ -593,6 +655,24 @@ export default function App() {
                 </span>
               )}
             </button>
+
+            <button 
+              onClick={() => setActiveTab('favorit')}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg font-semibold text-sm transition-all relative w-full text-left cursor-pointer ${
+                activeTab === 'favorit'
+                  ? 'bg-rose-50 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 shadow-sm'
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-slate-950 dark:hover:text-white'
+              }`}
+              id="sidebar-tab-favorit"
+            >
+              <Heart className="w-4 h-4" />
+              <span>Favorit</span>
+              {favorites.length > 0 && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                  {favorites.length}
+                </span>
+              )}
+            </button>
           </nav>
 
 
@@ -607,16 +687,17 @@ export default function App() {
           </p>
         </div>
 
-        {/* Custom AI Config Settings (Gemini & Open Source) */}
+        {/* Custom AI Config Settings (Gemini, Open Source & Apify) */}
         <div className="mx-4 mb-4 p-3.5 bg-blue-900 rounded-2xl text-white border border-blue-500/20">
           <div className="flex items-center gap-2 mb-1.5">
             <Sparkles className="w-4 h-4 text-blue-400 animate-pulse" />
-            <span className="text-xs font-bold tracking-wide">Pengaturan AI Kustom</span>
+            <span className="text-xs font-bold tracking-wide">Pengaturan API</span>
           </div>
           <p className="text-[10px] text-blue-200 leading-normal mb-2.5">
             {aiApiKey 
-              ? `✓ Mode: ${aiProvider === 'gemini' ? 'Gemini AI' : `Custom/OpenSource (${aiModel})`}` 
-              : 'Aplikasi berjalan dalam mode demo/fallback.'}
+              ? `✓ AI: ${aiProvider === 'gemini' ? 'Gemini' : aiModel}` 
+              : '✗ AI: tidak ada key'}
+            {apifyApiKey ? '  |  ✓ Apify siap' : '  |  ✗ Apify: tidak ada key'}
           </p>
           <button
             onClick={() => {
@@ -624,11 +705,12 @@ export default function App() {
               setTempApiKey(aiApiKey);
               setTempBaseUrl(aiBaseUrl);
               setTempModel(aiModel);
+              setTempApifyKey(apifyApiKey);
               setShowApiKeyModal(true);
             }}
             className="w-full py-1.5 px-3 bg-white hover:bg-neutral-100 text-blue-950 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
           >
-            {aiApiKey ? 'Ubah Model & API Key' : 'Atur API Key & Model'}
+            Atur API Key
           </button>
         </div>
 
@@ -747,6 +829,16 @@ export default function App() {
               }}
               className="hidden"
             />
+
+            <button
+              onClick={handleApifySearch}
+              disabled={apifyLoading}
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs sm:text-sm font-medium rounded-lg flex items-center gap-1.5 shadow-sm hover:shadow transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              id="apify-scrape-btn"
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+              {apifyLoading ? 'Scraping...' : 'Scrape Apify'}
+            </button>
 
             <button
               onClick={() => fileInputRef.current?.click()}
@@ -951,8 +1043,19 @@ export default function App() {
                                             {creator.category}
                                           </span>
                                         </div>
-                                        <div className="text-right shrink-0">
-                                          <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono flex items-center justify-end gap-0.5 font-bold">
+                                        <div className="flex items-center gap-1 shrink-0">
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); toggleFavorite(creator); }}
+                                            className={`p-1 rounded-lg transition-colors cursor-pointer ${
+                                              favorites.some(f => f.id === creator.id)
+                                                ? 'text-rose-500 hover:text-rose-600'
+                                                : 'text-slate-300 dark:text-slate-500 hover:text-rose-400'
+                                            }`}
+                                            title={favorites.some(f => f.id === creator.id) ? 'Hapus dari favorit' : 'Tambah ke favorit'}
+                                          >
+                                            <Heart className={`w-4 h-4 ${favorites.some(f => f.id === creator.id) ? 'fill-rose-500' : ''}`} />
+                                          </button>
+                                          <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono flex items-center gap-0.5 font-bold">
                                             <MapPin className="w-3.5 h-3.5 text-slate-404 dark:text-slate-500" />
                                             {creator.distanceKm} km
                                           </p>
@@ -1348,6 +1451,113 @@ export default function App() {
 
               </motion.div>
             )}
+
+            {/* TAB 3: Favorit */}
+            {activeTab === 'favorit' && (
+              <motion.div
+                key="favorit-tab"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="p-6 sm:p-8 max-w-4xl mx-auto w-full"
+              >
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                      <Heart className="w-5 h-5 text-rose-500 fill-rose-500" />
+                      Kreator Favorit
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      {favorites.length} kreator tersimpan
+                    </p>
+                  </div>
+                </div>
+
+                {favorites.length === 0 ? (
+                  <div className="text-center py-16">
+                    <Heart className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
+                    <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Belum ada kreator favorit</p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Klik ikon hati pada kartu kreator untuk menambahkannya</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {favorites.map(creator => (
+                      <div key={creator.id} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col justify-between">
+                        <div>
+                          <div className="flex justify-between items-start mb-2">
+                            <div className="flex flex-wrap gap-1">
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                creator.platform === 'Instagram'
+                                  ? 'bg-pink-100 dark:bg-pink-900/40 text-pink-700 dark:text-pink-300'
+                                  : 'bg-slate-900 dark:bg-slate-600 text-white'
+                              }`}>
+                                {creator.platform}
+                              </span>
+                              <span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded font-bold">
+                                {creator.category}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => toggleFavorite(creator)}
+                              className="text-rose-500 hover:text-rose-600 p-1 cursor-pointer"
+                              title="Hapus dari favorit"
+                            >
+                              <Heart className="w-4 h-4 fill-rose-500" />
+                            </button>
+                          </div>
+
+                          <div className="flex items-center gap-3 mb-3">
+                            <div className="w-11 h-11 rounded-full bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center font-bold text-xs uppercase">
+                              {creator.name.slice(0, 2)}
+                            </div>
+                            <div>
+                              <h4 className="font-bold text-slate-900 dark:text-white text-sm">{creator.name}</h4>
+                              <p className="text-[11px] font-mono text-blue-600 dark:text-blue-400">{creator.username}</p>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-1 bg-slate-100 dark:bg-slate-700/50 p-2 rounded-lg text-center text-[11px] mb-3 font-semibold font-mono">
+                            <div>
+                              <span className="text-[9px] text-slate-400 dark:text-slate-500 font-sans block">Followers</span>
+                              <span>{creator.followers >= 1000 ? (creator.followers / 1000).toFixed(1) + 'K' : creator.followers}</span>
+                            </div>
+                            <div>
+                              <span className="text-[9px] text-slate-400 dark:text-slate-500 font-sans block">Engagement</span>
+                              <span className="text-blue-700 dark:text-blue-400">{creator.engagementRate}%</span>
+                            </div>
+                            <div>
+                              <span className="text-[9px] text-slate-400 dark:text-slate-500 font-sans block">Lokasi</span>
+                              <span className="text-[10px] block truncate">{creator.location.split('(')[0].trim()}</span>
+                            </div>
+                          </div>
+
+                          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                            <strong className="text-slate-800 dark:text-slate-200 font-semibold">Konten:</strong> {creator.contentType}
+                          </p>
+                        </div>
+
+                        <div className="flex gap-1.5 pt-2 border-t border-slate-100 dark:border-slate-700 mt-3">
+                          <button
+                            onClick={() => handleSaveCreator(creator)}
+                            className="flex-1 text-[10.5px] font-bold py-1.5 px-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-all cursor-pointer flex items-center justify-center gap-1"
+                          >
+                            <Plus className="w-3 h-3" />
+                            Simpan ke CRM
+                          </button>
+                          <button
+                            onClick={() => { setActiveTab('eksplorasi'); handleOpenDMGenerator(creator); }}
+                            className="text-[10.5px] font-bold py-1.5 px-2 rounded-lg border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all cursor-pointer"
+                            title="Buat Draft DM"
+                          >
+                            <Mail className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </motion.div>
+            )}
+
           </AnimatePresence>
 
           {/* Footer inside Content Area */}
@@ -1554,6 +1764,7 @@ export default function App() {
             </motion.div>
           </div>
         )}
+
       </AnimatePresence>
 
       {/* API Key Configuration Modal */}
@@ -1692,10 +1903,28 @@ export default function App() {
                     </motion.div>
                   )}
 
-                  <p className="text-[10px] text-slate-400 block leading-tight border-t border-slate-100 pt-3">
-                    * Kunci API disimpan di penyimpanan lokal browser Anda (localStorage) secara aman, tidak pernah bocor atau dikirim ke server luar kecuali diproksikan ke model API pilihan Anda.
-                  </p>
                 </div>
+
+                  {/* Apify API Key Section */}
+                  <div className="border-t border-slate-100 pt-4 space-y-1.5">
+                    <div className="flex justify-between items-center">
+                      <label className="text-xs font-bold text-slate-700 block flex items-center gap-1.5">
+                        <svg className="w-3.5 h-3.5 text-amber-600" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+                        Apify API Token
+                      </label>
+                      <span className="text-[10px] text-slate-400">Opsional</span>
+                    </div>
+                    <input
+                      type="password"
+                      placeholder="apify_api_xxxxxxxxxxxxxxxxxxxx"
+                      value={tempApifyKey || ''}
+                      onChange={(e) => setTempApifyKey(e.target.value)}
+                      className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono"
+                    />
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      Digunakan untuk scraping data influencer langsung dari Instagram/TikTok via Apify Actors.
+                    </p>
+                  </div>
 
                 <div className="flex gap-2 justify-end pt-3 border-t border-slate-100 mt-4">
                   <button
@@ -1710,7 +1939,14 @@ export default function App() {
                   <button
                     onClick={() => {
                       handleSaveApiConfig(tempProvider, tempApiKey, tempBaseUrl, tempModel);
+                      setApifyApiKey(tempApifyKey);
+                      localStorage.setItem('apify_api_key', tempApifyKey);
                       setShowApiKeyModal(false);
+                      triggerNotification(
+                        tempApifyKey 
+                          ? 'Apify API token berhasil disimpan!'
+                          : 'Apify token dihapus. Scraping langsung dinonaktifkan.'
+                      );
                     }}
                     className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2 rounded-lg transition-colors cursor-pointer shadow-sm"
                   >
