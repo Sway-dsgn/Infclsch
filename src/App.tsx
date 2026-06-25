@@ -16,13 +16,41 @@ import {
   ExternalLink, ShieldCheck, BadgeCheck, Moon, Sun, Hash
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
+import { supabase } from './lib/supabase';
+import { signOut, getSession } from './lib/auth';
+import {
+  getCollaborations,
+  createCollaboration,
+  updateCollaborationStatus,
+  updateCollaborationNotes,
+  updateCollaborationDm,
+  updateCollaborationBudget,
+  deleteCollaboration,
+} from './lib/collaborations';
 
 export default function App() {
   // --- PAGE ROUTING (Landing / Login / App) ---
-  const [currentPage, setCurrentPage] = useState<'landing' | 'login' | 'app'>(() => {
-    const savedUser = localStorage.getItem('influx_user');
-    return savedUser ? 'app' : 'landing';
-  });
+  const [currentPage, setCurrentPage] = useState<'landing' | 'login' | 'app'>('landing');
+  const [authLoading, setAuthLoading] = useState(true);
+
+  useEffect(() => {
+    getSession().then(({ session }) => {
+      if (session) {
+        setCurrentPage('app');
+      }
+      setAuthLoading(false);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        setCurrentPage('app');
+      } else if (event === 'SIGNED_OUT') {
+        setCurrentPage('landing');
+      }
+    });
+
+    return () => listener?.subscription.unsubscribe();
+  }, []);
 
   // --- APPLICATION STATES ---
   const [activeTab, setActiveTab] = useState<'eksplorasi' | 'kerjasama'>('eksplorasi');
@@ -141,74 +169,73 @@ export default function App() {
     );
   };
 
-  // --- COMPONENT LOAD & PERSISTENCE ---
+  // --- LOAD COLLABORATIONS FROM SUPABASE ---
   useEffect(() => {
-    // Load saved collaborations from localStorage
-    const stored = localStorage.getItem('pkl_digital_marketing_campaign');
-    if (stored) {
-      try {
-        setCollaborations(JSON.parse(stored));
-      } catch (err) {
-        console.error('Error parsing stored collaborations:', err);
-      }
-    } else {
-      // Seed some initial collaborations so the portal doesn't look empty for the digital marketing task
-      const initialSeed: SavedCollaboration[] = [
-        {
-          id: "col-1",
-          addedAt: new Date().toISOString(),
-          notes: "Rencana kirim hampers lewat kurir minggu depan. Kreator ini sangat menyukai kuliner tradisional.",
-          status: "Menunggu Balasan",
-          campaignName: "Pengenalan ChocoLatte Sunda",
-          personalizedDm: "Halo Kak Rizky! 😊✨\n\nKenalin kami dari tim marketing ChocoLatte Sunda. Akhir-akhir ini kami sering banget liat postingan Kakak di Instagram (@rizkyr_kuliner), terutama konten Kakak yang bahas tentang jajanan kuliner Bandung. Suka banget sama vibe konten Kakak yang aesthetic abis!\n\nKami kebetulan lagi ada campaign seru nih untuk ngenalin ChocoLatte Sunda, produk minuman cokelat jahe instan biji kakao lokal. Karena kami rasa audiens Kakak pas banget dengan brand kami, kami pengen banget ngajak Kak Rizky buat kolaborasi santai!\n\nKami siapin benefit berupa Hampers Spesial ChocoLatte (senilai Rp 150rb) + Komisi affiliate 15%. Kakak punya kreativitas penuh untuk bikin konsep konten organik gaya Kakak sendiri. Gimana Kak, tertarik? Ditunggu kabar baiknya ya! 🙌",
-          budgetEst: 150000,
-          influencer: {
-            id: "m-bdg-1",
-            name: "Rizky Ramadhan",
-            username: "@rizkyr_kuliner",
-            platform: "Instagram",
-            location: "Bandung City (Dago Area)",
-            distanceKm: 8,
-            followers: 12500,
-            engagementRate: 5.4,
-            category: "Kuliner",
-            contentType: "Review Makanan Sunda & Cafe Aesthetic",
-            whyFits: "Memiliki audiens pemuda Bandung yang aktif mencari rekomendasi kuliner kekinian.",
-            contactMethod: "DM Instagram / email ke rizky.mkt@gmail.com",
-            estimatedLikes: 680,
-            estimatedComments: 45
+    if (currentPage !== 'app') return;
+
+    getCollaborations().then((cols) => {
+      if (cols.length > 0) {
+        setCollaborations(cols);
+      } else {
+        const initialSeed: SavedCollaboration[] = [
+          {
+            id: "col-1",
+            addedAt: new Date().toISOString(),
+            notes: "Rencana kirim hampers lewat kurir minggu depan. Kreator ini sangat menyukai kuliner tradisional.",
+            status: "Menunggu Balasan",
+            campaignName: "Pengenalan ChocoLatte Sunda",
+            personalizedDm: "Halo Kak Rizky! 😊✨\n\nKenalin kami dari tim marketing ChocoLatte Sunda. Akhir-akhir ini kami sering banget liat postingan Kakak di Instagram (@rizkyr_kuliner), terutama konten Kakak yang bahas tentang jajanan kuliner Bandung. Suka banget sama vibe konten Kakak yang aesthetic abis!\n\nKami kebetulan lagi ada campaign seru nih untuk ngenalin ChocoLatte Sunda, produk minuman cokelat jahe instan biji kakao lokal. Karena kami rasa audiens Kakak pas banget dengan brand kami, kami pengen banget ngajak Kak Rizky buat kolaborasi santai!\n\nKami siapin benefit berupa Hampers Spesial ChocoLatte (senilai Rp 150rb) + Komisi affiliate 15%. Kakak punya kreativitas penuh untuk bikin konsep konten organik gaya Kakak sendiri. Gimana Kak, tertarik? Ditunggu kabar baiknya ya! 🙌",
+            budgetEst: 150000,
+            influencer: {
+              id: "m-bdg-1",
+              name: "Rizky Ramadhan",
+              username: "@rizkyr_kuliner",
+              platform: "Instagram",
+              location: "Bandung City (Dago Area)",
+              distanceKm: 8,
+              followers: 12500,
+              engagementRate: 5.4,
+              category: "Kuliner",
+              contentType: "Review Makanan Sunda & Cafe Aesthetic",
+              whyFits: "Memiliki audiens pemuda Bandung yang aktif mencari rekomendasi kuliner kekinian.",
+              contactMethod: "DM Instagram / email ke rizky.mkt@gmail.com",
+              estimatedLikes: 680,
+              estimatedComments: 45
+            }
+          },
+          {
+            id: "col-2",
+            addedAt: new Date().toISOString(),
+            notes: "Sudah di-DM lewat TikTok, respon positif sedang menjadwalkan tanggal posting.",
+            status: "Setuju / Negosiasi",
+            campaignName: "Pengenalan ChocoLatte Sunda",
+            personalizedDm: "Hai Kak Siti! 🚀🔥\n\nSalam kreatif! Kami dari ChocoLatte Sunda lagi merhatiin banget akun TikTok Kakak (@sitinur_style). Konten Fashion & OOTD remaja Jabar yang Kakak buatan bener-bener fresh dan dapet engagement yang asyik abis dari followers Kakak. Keren banget!\n\nSaat ini kami lagi ngerilis campaign organic brand awareness untuk memperkenalkan ChocoLatte Sunda. Kami mau ngajakin Kak Siti buat kolaborasi bikin konten kreatif dengan kebebasan penuh dalam berkreasi sesuai gaya unik Kakak!\n\nBenefit seru untuk Kakak:\nHampers Spesial ChocoLatte (senilai Rp 150rb) + Komisi affiliate 15%.\n\nKalau Kakak tertarik buat bikin kolaborasi seru ini, langsung reply pesan ini ya! Ditunggu kabar baiknya ya Kak! Terima kasih banyak dan sehat selalu!",
+            budgetEst: 150000,
+            influencer: {
+              id: "m-bdg-2",
+              name: "Siti Nurhaliza",
+              username: "@sitinur_style",
+              platform: "TikTok",
+              location: "Soreang, Kab. Bandung",
+              distanceKm: 28,
+              followers: 48000,
+              engagementRate: 6.8,
+              category: "Fashion",
+              contentType: "Hijab Mix and Match & Daily OOTD",
+              whyFits: "Sangat populer di kalangan remaja muslimah Jawa Barat dengan engagement tontonan TikTok tinggi.",
+              contactMethod: "TikTok DM / Business link di Bio",
+              estimatedLikes: 3200,
+              estimatedComments: 180
+            }
           }
-        },
-        {
-          id: "col-2",
-          addedAt: new Date().toISOString(),
-          notes: "Sudah di-DM lewat TikTok, respon positif sedang menjadwalkan tanggal posting.",
-          status: "Setuju / Negosiasi",
-          campaignName: "Pengenalan ChocoLatte Sunda",
-          personalizedDm: "Hai Kak Siti! 🚀🔥\n\nSalam kreatif! Kami dari ChocoLatte Sunda lagi merhatiin banget akun TikTok Kakak (@sitinur_style). Konten Fashion & OOTD remaja Jabar yang Kakak buatan bener-bener fresh dan dapet engagement yang asyik abis dari followers Kakak. Keren banget!\n\nSaat ini kami lagi ngerilis campaign organic brand awareness untuk memperkenalkan ChocoLatte Sunda. Kami mau ngajakin Kak Siti buat kolaborasi bikin konten kreatif dengan kebebasan penuh dalam berkreasi sesuai gaya unik Kakak!\n\nBenefit seru untuk Kakak:\nHampers Spesial ChocoLatte (senilai Rp 150rb) + Komisi affiliate 15%.\n\nKalau Kakak tertarik buat bikin kolaborasi seru ini, langsung reply pesan ini ya! Ditunggu kabar baiknya ya Kak! Terima kasih banyak dan sehat selalu!",
-          budgetEst: 150000,
-          influencer: {
-            id: "m-bdg-2",
-            name: "Siti Nurhaliza",
-            username: "@sitinur_style",
-            platform: "TikTok",
-            location: "Soreang, Kab. Bandung",
-            distanceKm: 28,
-            followers: 48000,
-            engagementRate: 6.8,
-            category: "Fashion",
-            contentType: "Hijab Mix and Match & Daily OOTD",
-            whyFits: "Sangat populer di kalangan remaja muslimah Jawa Barat dengan engagement tontonan TikTok tinggi.",
-            contactMethod: "TikTok DM / Business link di Bio",
-            estimatedLikes: 3200,
-            estimatedComments: 180
-          }
+        ];
+        for (const col of initialSeed) {
+          createCollaboration(col);
         }
-      ];
-      setCollaborations(initialSeed);
-      localStorage.setItem('pkl_digital_marketing_campaign', JSON.stringify(initialSeed));
-    }
-  }, []);
+        setCollaborations(initialSeed);
+      }
+    });
+  }, [currentPage]);
 
   // Simulated Audit / Realness check sequence
   useEffect(() => {
@@ -247,8 +274,9 @@ export default function App() {
     };
   }, [activeAuditInfluencer]);
 
-  const saveToLocalStorage = (list: SavedCollaboration[]) => {
-    localStorage.setItem('pkl_digital_marketing_campaign', JSON.stringify(list));
+  const refreshCollaborations = async () => {
+    const cols = await getCollaborations();
+    setCollaborations(cols);
   };
 
   // --- ACTIONS ---
@@ -385,7 +413,7 @@ export default function App() {
   };
 
   // Save/add creator to Campaign Tracker
-  const handleSaveCreator = (creator: Influencer) => {
+  const handleSaveCreator = async (creator: Influencer) => {
     // Check if duplicate
     if (collaborations.some(col => col.influencer.id === creator.id)) {
       triggerNotification(`${creator.username} sudah ada dalam Daftar Kerja Sama.`);
@@ -403,43 +431,37 @@ export default function App() {
       influencer: creator
     };
 
-    const updated = [newCol, ...collaborations];
-    setCollaborations(updated);
-    saveToLocalStorage(updated);
+    const created = await createCollaboration(newCol);
+    if (created) {
+      setCollaborations([created, ...collaborations]);
+    }
     triggerNotification(`Berhasil menyimpan ${creator.username} ke Daftar Kerja Sama Kampanye.`);
   };
 
   // Delete saved collaboration
-  const handleDeleteCollaboration = (id: string) => {
-    const updated = collaborations.filter(col => col.id !== id);
-    setCollaborations(updated);
-    saveToLocalStorage(updated);
+  const handleDeleteCollaboration = async (id: string) => {
+    await deleteCollaboration(id);
+    setCollaborations(prev => prev.filter(col => col.id !== id));
     triggerNotification('Kerja sama telah dihapus dari daftar tracker.');
   };
 
   // Update saved collaboration status
-  const handleUpdateStatus = (id: string, status: CollaborationStatus) => {
-    const updated = collaborations.map(col => {
-      if (col.id === id) {
-        return { ...col, status };
-      }
+  const handleUpdateStatus = async (id: string, status: CollaborationStatus) => {
+    await updateCollaborationStatus(id, status);
+    setCollaborations(prev => prev.map(col => {
+      if (col.id === id) return { ...col, status };
       return col;
-    });
-    setCollaborations(updated);
-    saveToLocalStorage(updated);
+    }));
     triggerNotification('Status kolaborasi diperbarui.');
   };
 
   // Update saved comments/notes
-  const handleUpdateNotes = (id: string, notes: string) => {
-    const updated = collaborations.map(col => {
-      if (col.id === id) {
-        return { ...col, notes };
-      }
+  const handleUpdateNotes = async (id: string, notes: string) => {
+    await updateCollaborationNotes(id, notes);
+    setCollaborations(prev => prev.map(col => {
+      if (col.id === id) return { ...col, notes };
       return col;
-    });
-    setCollaborations(updated);
-    saveToLocalStorage(updated);
+    }));
   };
 
   // Open DM Modal
@@ -448,26 +470,25 @@ export default function App() {
   };
 
   // Save the custom message back to the active saved collaboration
-  const handleSaveDMBack = (text: string) => {
+  const handleSaveDMBack = async (text: string) => {
     if (!activeDMInfluencer) return;
 
     const matchedSaved = collaborations.find(col => col.influencer.id === activeDMInfluencer.id);
     if (matchedSaved) {
-      const updated = collaborations.map(col => {
+      const newStatus = matchedSaved.status === 'Belum Hubungi' ? 'Sudah di-DM' : undefined;
+      await updateCollaborationDm(matchedSaved.id, text, newStatus);
+      setCollaborations(prev => prev.map(col => {
         if (col.influencer.id === activeDMInfluencer.id) {
           return { 
             ...col, 
             personalizedDm: text, 
-            status: col.status === 'Belum Hubungi' ? 'Sudah di-DM' : col.status 
+            status: newStatus || col.status 
           };
         }
         return col;
-      });
-      setCollaborations(updated);
-      saveToLocalStorage(updated);
+      }));
       triggerNotification(`Draf pesan kolaborasi berhasil disimpan untuk ${activeDMInfluencer.username}.`);
     } else {
-      // If creator was not in collaborations yet, offer to save them automatically!
       const newCol: SavedCollaboration = {
         id: "col-" + Date.now(),
         addedAt: new Date().toISOString(),
@@ -478,9 +499,10 @@ export default function App() {
         budgetEst: 150000,
         influencer: activeDMInfluencer
       };
-      const updated = [newCol, ...collaborations];
-      setCollaborations(updated);
-      saveToLocalStorage(updated);
+      const created = await createCollaboration(newCol);
+      if (created) {
+        setCollaborations(prev => [created, ...prev]);
+      }
       triggerNotification(`Kreator disimpan secara otomatis & draf pesan diamankan!`);
     }
 
@@ -500,6 +522,17 @@ export default function App() {
         darkMode={darkMode}
         onToggleDark={() => setDarkMode(!darkMode)}
       />
+    );
+  }
+
+  if (authLoading) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-white dark:bg-slate-900">
+        <div className="flex items-center gap-2 text-slate-400">
+          <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+          <span className="text-sm">Loading...</span>
+        </div>
+      </div>
     );
   }
 
@@ -643,8 +676,8 @@ export default function App() {
         {/* Logout */}
         <div className="mx-4 mb-4">
           <button
-            onClick={() => {
-              localStorage.removeItem('influx_user');
+            onClick={async () => {
+              await signOut();
               setCurrentPage('landing');
             }}
             className="w-full py-2 px-3 bg-slate-100 dark:bg-slate-700 hover:bg-red-100 dark:hover:bg-red-900/30 text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer"
@@ -1265,15 +1298,13 @@ export default function App() {
                                 <input 
                                   type="number"
                                   value={col.budgetEst || 150000}
-                                  onChange={(e) => {
-                                    const updated = collaborations.map(c => {
-                                      if (c.id === col.id) {
-                                        return { ...c, budgetEst: Number(e.target.value) };
-                                      }
+                                  onChange={async (e) => {
+                                    const val = Number(e.target.value);
+                                    await updateCollaborationBudget(col.id, val);
+                                    setCollaborations(prev => prev.map(c => {
+                                      if (c.id === col.id) return { ...c, budgetEst: val };
                                       return c;
-                                    });
-                                    setCollaborations(updated);
-                                    saveToLocalStorage(updated);
+                                    }));
                                   }}
                                   className="w-full text-xs border border-slate-200 dark:border-slate-600 rounded-lg px-2.5 py-1.5 font-semibold font-mono text-slate-800 dark:text-slate-200 bg-slate-50 dark:bg-slate-700"
                                 />

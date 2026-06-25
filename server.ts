@@ -2,7 +2,7 @@ import express from "express";
 import http from "http";
 import path from "path";
 import fs from "fs";
-import { createServer as createViteServer } from "vite";
+
 import { Server as SocketIOServer } from "socket.io";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
@@ -1633,8 +1633,9 @@ function generateFallbackChatReply(name: string): string {
 }
 
 // Vite middleware configuration for dev & static folder routing for prod
-async function startServer() {
+async function setupStaticServing() {
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
@@ -1647,14 +1648,15 @@ async function startServer() {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
+}
 
-  const server = http.createServer(app);
-
+async function setupSocketIO(server: http.Server) {
   const io = new SocketIOServer(server, {
     cors: {
       origin: process.env.NODE_ENV === "production" ? false : ["http://localhost:5173", "http://localhost:3000"],
       methods: ["GET", "POST"],
     },
+    transports: process.env.VERCEL ? ['polling'] : ['websocket', 'polling'],
   });
 
   type ChatMessage = {
@@ -1702,6 +1704,14 @@ async function startServer() {
       console.log(`User disconnected: ${socket.id}`);
     });
   });
+}
+
+async function startServer() {
+  await setupStaticServing();
+
+  const server = http.createServer(app);
+
+  await setupSocketIO(server);
 
   server.listen(PORT, "0.0.0.0", () => {
     const addr = server.address();
@@ -1711,4 +1721,9 @@ async function startServer() {
   });
 }
 
-startServer();
+if (!process.env.VERCEL) {
+  startServer();
+}
+
+export { app };
+export default app;

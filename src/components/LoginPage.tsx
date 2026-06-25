@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Compass, LogIn, Eye, EyeOff, ArrowLeft, Sparkles, Mail, Lock, Chrome, TrendingUp, Users, BarChart3, Target, Star, CheckCircle, Music2, Youtube, Facebook, Instagram } from 'lucide-react';
+import { signIn, signUp } from '../lib/auth';
 
 interface LoginPageProps {
   onLogin: () => void;
@@ -13,18 +14,43 @@ export default function LoginPage({ onLogin, onBack, darkMode }: LoginPageProps)
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState('');
+  const [isRegister, setIsRegister] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !password.trim()) {
       setError('Harap isi email dan password.');
       return;
     }
-    if (password.length < 3) {
-      setError('Password minimal 3 karakter.');
+    if (password.length < 6) {
+      setError('Password minimal 6 karakter.');
       return;
     }
-    localStorage.setItem('influx_user', JSON.stringify({ username: email.trim() }));
+
+    setLoading(true);
+    setError('');
+
+    if (isRegister) {
+      const { error } = await signUp(email.trim(), password);
+      if (error) {
+        setError(error.message);
+        setLoading(false);
+        return;
+      }
+      setError('Akun berhasil dibuat! Silakan cek email untuk verifikasi, lalu login.');
+      setLoading(false);
+      return;
+    }
+
+    const { error } = await signIn(email.trim(), password);
+    setLoading(false);
+
+    if (error) {
+      setError(error.message);
+      return;
+    }
+
     onLogin();
   };
 
@@ -129,18 +155,19 @@ export default function LoginPage({ onLogin, onBack, darkMode }: LoginPageProps)
 
             <button
               type="submit"
-              className="w-full py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white text-sm font-bold rounded-xl transition-all shadow-md shadow-blue-200 flex items-center justify-center gap-2 cursor-pointer"
+              disabled={loading}
+              className="w-full py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white text-sm font-bold rounded-xl transition-all shadow-md shadow-blue-200 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
             >
               <LogIn className="w-4 h-4" />
-              Log In
+              {loading ? 'Loading...' : isRegister ? 'Create Account' : 'Log In'}
             </button>
           </form>
 
-          {/* Sign Up */}
+          {/* Sign Up / Login toggle */}
           <p className="text-center text-xs text-slate-500 mt-6">
-            Don't have an account?{' '}
-            <button type="button" onClick={onLogin} className="font-semibold text-blue-600 hover:text-blue-700 transition-colors cursor-pointer">
-              Create account
+            {isRegister ? "Already have an account? " : "Don't have an account? "}
+            <button type="button" onClick={() => { setIsRegister(!isRegister); setError(''); }} className="font-semibold text-blue-600 hover:text-blue-700 transition-colors cursor-pointer">
+              {isRegister ? 'Log in' : 'Create account'}
             </button>
           </p>
         </div>
