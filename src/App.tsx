@@ -797,33 +797,20 @@ export default function App() {
                 const file = e.target.files?.[0];
                 if (!file) return;
                 try {
-                  triggerNotification('Mengimpor file Excel...');
-                  const reader = new FileReader();
-                  reader.onload = async (ev) => {
-                    const base64 = (ev.target?.result as string).split(',')[1];
-                    const response = await fetch('/api/import-excel', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ fileData: base64, fileName: file.name }),
-                    });
-                    if (!response.ok) {
-                      const err = await response.json();
-                      throw new Error(err.error || 'Gagal mengimpor data.');
-                    }
-                    const result = await response.json();
-                    if (result.influencers && result.influencers.length > 0) {
-                      setCreators(result.influencers);
-                      setSearchTriggered(true);
-                      setActiveTab('eksplorasi');
-                      setCurrentPageNum(1);
-                      const mergeNote = result.mergedCount > 0 ? ` (${result.mergedCount} duplikat digabung)` : '';
-                      const truncNote = result.truncated ? ' (ditampilkan max 500)' : '';
-                      triggerNotification(`${result.influencers.length} kreator berhasil diimpor dari Excel!${mergeNote}${truncNote} 🎉`);
-                    } else {
-                      triggerNotification('File Excel berhasil diproses, tapi tidak ada data kreator.');
-                    }
-                  };
-                  reader.readAsDataURL(file);
+                  triggerNotification('Memproses file Excel di browser...');
+                  const { parseExcelFile } = await import('./lib/excelImport');
+                  const result = await parseExcelFile(file);
+                  if (result.influencers.length > 0) {
+                    setCreators(result.influencers);
+                    setSearchTriggered(true);
+                    setActiveTab('eksplorasi');
+                    setCurrentPageNum(1);
+                    const mergeNote = result.mergedCount > 0 ? ` (${result.mergedCount} duplikat digabung)` : '';
+                    const truncNote = result.truncated ? ' (ditampilkan max 500)' : '';
+                    triggerNotification(`${result.influencers.length} kreator berhasil diimpor dari Excel!${mergeNote}${truncNote} 🎉`);
+                  } else {
+                    triggerNotification('File Excel berhasil diproses, tapi tidak ada data kreator.');
+                  }
                 } catch (err: any) {
                   console.error(err);
                   triggerNotification('Gagal mengimpor Excel: ' + err.message);
