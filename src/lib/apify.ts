@@ -3,6 +3,8 @@ import type { Influencer } from '../types';
 const APIFY_SEARCH_ACTOR = 'apify~instagram-search-scraper';
 const APIFY_API_BASE = 'https://api.apify.com/v2';
 
+let searchOffset = 0;
+
 export async function searchInstagramProfiles(
   apiToken: string,
   searchTerms: string[],
@@ -15,6 +17,9 @@ export async function searchInstagramProfiles(
     ? searchTerms.map(t => `${t} ${location}`)
     : [`influencer ${location}`];
 
+  const offset = searchOffset;
+  searchOffset += 10;
+
   const actorRunUrl = `${APIFY_API_BASE}/acts/${APIFY_SEARCH_ACTOR}/runs?token=${apiToken}`;
 
   const response = await fetch(actorRunUrl, {
@@ -23,7 +28,8 @@ export async function searchInstagramProfiles(
     body: JSON.stringify({
       searchTerms: queries,
       searchType: 'user',
-      limit: 10,
+      resultsLimit: 10,
+      resultsOffset: offset,
     }),
   });
 
@@ -54,7 +60,8 @@ export async function searchInstagramProfiles(
       const datasetRes = await fetch(
         `${APIFY_API_BASE}/actor-runs/${runId}/output/dataset/items?token=${apiToken}`
       );
-      datasetItems = await datasetRes.json();
+      const data = await datasetRes.json();
+      datasetItems = Array.isArray(data) ? data : [];
       break;
     } else if (status === 'FAILED' || status === 'ABORTED' || status === 'TIMED-OUT') {
       throw new Error(`Apify run gagal dengan status: ${status}`);
@@ -62,6 +69,7 @@ export async function searchInstagramProfiles(
   }
 
   if (datasetItems.length === 0) {
+    searchOffset = 0;
     throw new Error('Apify tidak mengembalikan data apapun');
   }
 
