@@ -3,6 +3,17 @@ import type { Influencer } from '../types';
 const APIFY_SEARCH_ACTOR = 'apify~instagram-search-scraper';
 const APIFY_API_BASE = 'https://api.apify.com/v2';
 
+const randomModifiers = [
+  'terbaik', 'populer', 'viral', 'keren', 'hits',
+  'kekinian', 'terkenal', 'favorit', 'top', 'seru',
+  'aktif', 'berpengaruh', 'kreatif', 'asli', 'lokal',
+  'tiktok', 'story', 'reels', 'konten', 'daily',
+];
+
+function pickRandomModifier(): string {
+  return randomModifiers[Math.floor(Math.random() * randomModifiers.length)];
+}
+
 export async function searchInstagramProfiles(
   apiToken: string,
   searchTerms: string[],
@@ -11,9 +22,10 @@ export async function searchInstagramProfiles(
 ): Promise<Influencer[]> {
   if (!apiToken) throw new Error('Apify API token tidak tersedia');
 
+  const modifier = pickRandomModifier();
   const queries = searchTerms.length > 0
-    ? searchTerms.map(t => `${t} ${location}`)
-    : [`influencer ${location}`];
+    ? searchTerms.map(t => `${t} ${location} ${modifier}`)
+    : [`influencer ${location} ${modifier}`];
 
   const actorRunUrl = `${APIFY_API_BASE}/acts/${APIFY_SEARCH_ACTOR}/runs?token=${apiToken}`;
 
