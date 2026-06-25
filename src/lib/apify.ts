@@ -1,6 +1,6 @@
 import type { Influencer } from '../types';
 
-const APIFY_INSTAGRAM_SEARCH_ACTOR = 'apify~instagram-profile-scraper';
+const APIFY_SEARCH_ACTOR = 'apify~instagram-search-scraper';
 const APIFY_API_BASE = 'https://api.apify.com/v2';
 
 export async function searchInstagramProfiles(
@@ -11,19 +11,19 @@ export async function searchInstagramProfiles(
 ): Promise<Influencer[]> {
   if (!apiToken) throw new Error('Apify API token tidak tersedia');
 
-  const searchQuery = searchTerms.length > 0
-    ? `${searchTerms.join(' ')} ${location}`
-    : `influencer ${location}`;
+  const queries = searchTerms.length > 0
+    ? searchTerms.map(t => `${t} ${location}`)
+    : [`influencer ${location}`];
 
-  const actorRunUrl = `${APIFY_API_BASE}/acts/${APIFY_INSTAGRAM_SEARCH_ACTOR}/runs?token=${apiToken}`;
+  const actorRunUrl = `${APIFY_API_BASE}/acts/${APIFY_SEARCH_ACTOR}/runs?token=${apiToken}`;
 
   const response = await fetch(actorRunUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      searchType: 'search',
-      searchTerm: searchQuery,
-      searchLimit: 20,
+      searchTerms: queries,
+      searchType: 'user',
+      limit: 10,
     }),
   });
 
@@ -69,17 +69,13 @@ export async function searchInstagramProfiles(
   const influencers: Influencer[] = [];
 
   for (const item of datasetItems) {
-    const username = item.username || item.ownerUsername || '';
+    const username = item.userName || item.username || '';
     if (!username || seenUsernames.has(username.toLowerCase())) continue;
     seenUsernames.add(username.toLowerCase());
 
-    const fullName = item.fullName || item.ownerFullName || username;
+    const fullName = item.fullName || username;
     const followers = item.followersCount || 0;
-    const likes = item.likesCount || 0;
-    const comments = item.commentsCount || 0;
-    const avgEngagement = followers > 0
-      ? parseFloat((((likes + comments) / followers) * 100).toFixed(2))
-      : 0;
+    const avgEngagement = item.engagementRate || 0;
 
     influencers.push({
       id: `apify-${username}`,
@@ -87,15 +83,15 @@ export async function searchInstagramProfiles(
       username: `@${username}`,
       platform: 'Instagram',
       followers,
-      engagementRate: avgEngagement,
+      engagementRate: typeof avgEngagement === 'number' ? avgEngagement : 0,
       location: item.location || location || 'N/A',
       category: searchTerms[0] || 'General',
-      contentType: item.description?.[0]?.slice(0, 100) || item.caption?.[0]?.slice(0, 100) || item.biography || '',
-      whyFits: `Scraped via Apify — ${item.followersCount || 0} followers, ${avgEngagement}% engagement`,
+      contentType: item.biography || item.description || '',
+      whyFits: `Scraped via Apify — ${followers} followers`,
       distanceKm: 0,
       contactMethod: 'DM Instagram',
-      estimatedLikes: likes,
-      estimatedComments: comments,
+      estimatedLikes: 0,
+      estimatedComments: 0,
     });
   }
 
