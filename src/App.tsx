@@ -965,6 +965,13 @@ export default function App() {
                             {openCollabOnly && <span className="text-[9px] opacity-80 ml-0.5">({filteredCreators.length})</span>}
                           </button>
                           <button
+                            onClick={handleSearch}
+                            className="text-[10px] font-bold px-2.5 py-1 rounded-full border transition-all cursor-pointer flex items-center gap-1 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:text-blue-600 dark:hover:text-blue-400"
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                            Refresh
+                          </button>
+                          <button
                             onClick={() => setShowMapView(!showMapView)}
                             className={`text-[10px] font-bold px-2.5 py-1 rounded-full border transition-all cursor-pointer flex items-center gap-1 ${
                               showMapView
