@@ -61,7 +61,11 @@ export default function App() {
   ]);
   const [openCollabOnly, setOpenCollabOnly] = useState<boolean>(false);
 
-  const ITEMS_PER_PAGE = 10;
+  const [itemsPerPage, setItemsPerPage] = useState<number>(() => {
+    const saved = localStorage.getItem('influx_items_per_page');
+    return saved ? parseInt(saved, 10) : 10;
+  });
+  const [jumpPage, setJumpPage] = useState<string>('');
 
   const isOpenCollab = (c: Influencer) => {
     const bio = (c.contentType || '').toLowerCase();
@@ -1002,9 +1006,9 @@ export default function App() {
                           </p>
                         </div>
                       ) : (() => {
-                        const totalPages = Math.ceil(filteredCreators.length / ITEMS_PER_PAGE);
-                        const startIdx = (currentPageNum - 1) * ITEMS_PER_PAGE;
-                        const paginatedCreators = filteredCreators.slice(startIdx, startIdx + ITEMS_PER_PAGE);
+                        const totalPages = Math.ceil(filteredCreators.length / itemsPerPage);
+                        const startIdx = (currentPageNum - 1) * itemsPerPage;
+                        const paginatedCreators = filteredCreators.slice(startIdx, startIdx + itemsPerPage);
 
                         const getPageNumbers = () => {
                           const pages: (number | string)[] = [];
@@ -1180,38 +1184,77 @@ export default function App() {
                             </div>
 
                             {totalPages > 1 && (
-                              <div className="flex items-center justify-center gap-1 pt-2" id="pagination-controls">
-                                <button
-                                  onClick={() => setCurrentPageNum(p => Math.max(1, p - 1))}
-                                  disabled={currentPageNum === 1}
-                                  className="px-3 py-1.5 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
-                                >
-                                  Prev
-                                </button>
-                                {getPageNumbers().map((page, i) =>
-                                  page === '...' ? (
-                                    <span key={`ellipsis-${i}`} className="px-2 py-1.5 text-xs text-slate-400 dark:text-slate-500">...</span>
-                                  ) : (
-                                    <button
-                                      key={page}
-                                      onClick={() => setCurrentPageNum(page as number)}
-                                      className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
-                                        currentPageNum === page
-                                          ? 'bg-blue-600 text-white border-blue-600'
-                                          : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600'
-                                      }`}
-                                    >
-                                      {page}
-                                    </button>
-                                  )
-                                )}
-                                <button
-                                  onClick={() => setCurrentPageNum(p => Math.min(totalPages, p + 1))}
-                                  disabled={currentPageNum === totalPages}
-                                  className="px-3 py-1.5 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
-                                >
-                                  Next
-                                </button>
+                              <div className="flex flex-col items-center gap-3 pt-2" id="pagination-controls">
+                                <div className="flex items-center justify-center gap-1">
+                                  <button
+                                    onClick={() => setCurrentPageNum(p => Math.max(1, p - 1))}
+                                    disabled={currentPageNum === 1}
+                                    className="px-3 py-1.5 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+                                  >
+                                    Prev
+                                  </button>
+                                  {getPageNumbers().map((page, i) =>
+                                    page === '...' ? (
+                                      <span key={`ellipsis-${i}`} className="px-2 py-1.5 text-xs text-slate-400 dark:text-slate-500">...</span>
+                                    ) : (
+                                      <button
+                                        key={page}
+                                        onClick={() => setCurrentPageNum(page as number)}
+                                        className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                                          currentPageNum === page
+                                            ? 'bg-blue-600 text-white border-blue-600'
+                                            : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600'
+                                        }`}
+                                      >
+                                        {page}
+                                      </button>
+                                    )
+                                  )}
+                                  <button
+                                    onClick={() => setCurrentPageNum(p => Math.min(totalPages, p + 1))}
+                                    disabled={currentPageNum === totalPages}
+                                    className="px-3 py-1.5 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+                                  >
+                                    Next
+                                  </button>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">Hal</span>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    max={totalPages}
+                                    value={jumpPage}
+                                    onChange={(e) => setJumpPage(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        const page = parseInt(jumpPage, 10);
+                                        if (page >= 1 && page <= totalPages) {
+                                          setCurrentPageNum(page);
+                                          setJumpPage('');
+                                        }
+                                      }
+                                    }}
+                                    placeholder={String(currentPageNum)}
+                                    className="w-14 px-2 py-1 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-center"
+                                  />
+                                  <span className="text-[10px] text-slate-400 dark:text-slate-500">dari {totalPages}</span>
+                                  <select
+                                    value={itemsPerPage}
+                                    onChange={(e) => {
+                                      const val = parseInt(e.target.value, 10);
+                                      setItemsPerPage(val);
+                                      localStorage.setItem('influx_items_per_page', String(val));
+                                      setCurrentPageNum(1);
+                                    }}
+                                    className="text-[10px] px-2 py-1 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 cursor-pointer"
+                                  >
+                                    <option value={10}>10/hal</option>
+                                    <option value={25}>25/hal</option>
+                                    <option value={50}>50/hal</option>
+                                    <option value={100}>100/hal</option>
+                                  </select>
+                                </div>
                               </div>
                             )}
                           </>
