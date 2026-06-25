@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Influencer, SavedCollaboration, CampaignConfig, CollaborationStatus } from './types';
 import { INDONESIAN_CITIES } from './data/indonesianCities';
 import DMGenerator from './components/DMGenerator';
@@ -80,12 +80,14 @@ export default function App() {
   const [searchTriggered, setSearchTriggered] = useState<boolean>(false);
 
   // Client-side filtered creators (show everything, then narrow by active filters)
-  const filteredCreators = creators.filter(c => {
-    if (selectedPlatform !== 'Semua' && c.platform !== selectedPlatform) return false;
-    if (c.followers < minFollowers) return false;
-    if (openCollabOnly && !isOpenCollab(c)) return false;
-    return true;
-  });
+  const filteredCreators = useMemo(() => {
+    return creators.filter(c => {
+      if (selectedPlatform !== 'Semua' && c.platform !== selectedPlatform) return false;
+      if (c.followers < minFollowers) return false;
+      if (openCollabOnly && !isOpenCollab(c)) return false;
+      return true;
+    });
+  }, [creators, selectedPlatform, minFollowers, openCollabOnly]);
   const [geoStatus, setGeoStatus] = useState<string>('');
 
   // Audit (Verification Check) state
@@ -815,7 +817,8 @@ export default function App() {
                       setActiveTab('eksplorasi');
                       setCurrentPageNum(1);
                       const mergeNote = result.mergedCount > 0 ? ` (${result.mergedCount} duplikat digabung)` : '';
-                      triggerNotification(`${result.influencers.length} kreator berhasil diimpor dari Excel!${mergeNote} 🎉`);
+                      const truncNote = result.truncated ? ' (ditampilkan max 500)' : '';
+                      triggerNotification(`${result.influencers.length} kreator berhasil diimpor dari Excel!${mergeNote}${truncNote} 🎉`);
                     } else {
                       triggerNotification('File Excel berhasil diproses, tapi tidak ada data kreator.');
                     }

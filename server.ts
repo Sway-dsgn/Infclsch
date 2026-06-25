@@ -882,6 +882,13 @@ app.post("/api/import-excel", express.json({ limit: '50mb' }), (req, res) => {
     const mergedCount = influencers.length - deduped.length;
     console.log(`Dedup: ${influencers.length} rows -> ${deduped.length} unique (${mergedCount} duplicates merged)`);
 
+    // Limit results to prevent timeout/overload
+    const MAX_IMPORT = 500;
+    const truncated = deduped.length > MAX_IMPORT;
+    if (deduped.length > MAX_IMPORT) {
+      deduped.length = MAX_IMPORT;
+    }
+
     // On Vercel, filesystem is read-only; skip file write
     if (!process.env.VERCEL) {
       if (!fs.existsSync(DATASETS_DIR)) {
@@ -894,7 +901,7 @@ app.post("/api/import-excel", express.json({ limit: '50mb' }), (req, res) => {
       console.log(`Imported Excel saved to ${outputFile} (${deduped.length} records, ${mergedCount} merged)`);
     }
 
-    return res.json({ success: true, records: deduped.length, influencers: deduped, detectedCols, mergedCount });
+    return res.json({ success: true, records: deduped.length, influencers: deduped, detectedCols, mergedCount, truncated });
   } catch (error: any) {
     console.error('Import Excel Error:', error);
     return res.status(500).json({ error: 'Gagal mengimpor file Excel: ' + error.message });
