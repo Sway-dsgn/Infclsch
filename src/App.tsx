@@ -16,8 +16,6 @@ import {
   ExternalLink, ShieldCheck, BadgeCheck, Moon, Sun, Hash
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { supabase } from './lib/supabase';
-import { signOut, getSession } from './lib/auth';
 import {
   getCollaborations,
   createCollaboration,
@@ -30,27 +28,10 @@ import {
 
 export default function App() {
   // --- PAGE ROUTING (Landing / Login / App) ---
-  const [currentPage, setCurrentPage] = useState<'landing' | 'login' | 'app'>('landing');
-  const [authLoading, setAuthLoading] = useState(true);
-
-  useEffect(() => {
-    getSession().then(({ session }) => {
-      if (session) {
-        setCurrentPage('app');
-      }
-      setAuthLoading(false);
-    });
-
-    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session) {
-        setCurrentPage('app');
-      } else if (event === 'SIGNED_OUT') {
-        setCurrentPage('landing');
-      }
-    });
-
-    return () => listener?.subscription.unsubscribe();
-  }, []);
+  const [currentPage, setCurrentPage] = useState<'landing' | 'login' | 'app'>(() => {
+    const savedUser = localStorage.getItem('influx_user');
+    return savedUser ? 'app' : 'landing';
+  });
 
   // --- APPLICATION STATES ---
   const [activeTab, setActiveTab] = useState<'eksplorasi' | 'kerjasama'>('eksplorasi');
@@ -525,17 +506,6 @@ export default function App() {
     );
   }
 
-  if (authLoading) {
-    return (
-      <div className="h-screen w-full flex items-center justify-center bg-white dark:bg-slate-900">
-        <div className="flex items-center gap-2 text-slate-400">
-          <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-          <span className="text-sm">Loading...</span>
-        </div>
-      </div>
-    );
-  }
-
   if (currentPage === 'login') {
     return (
       <LoginPage
@@ -676,8 +646,8 @@ export default function App() {
         {/* Logout */}
         <div className="mx-4 mb-4">
           <button
-            onClick={async () => {
-              await signOut();
+            onClick={() => {
+              localStorage.removeItem('influx_user');
               setCurrentPage('landing');
             }}
             className="w-full py-2 px-3 bg-slate-100 dark:bg-slate-700 hover:bg-red-100 dark:hover:bg-red-900/30 text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer"
