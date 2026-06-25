@@ -45,7 +45,9 @@ export default function ChatRoom() {
     const wsUrl = `${protocol === 'https:' ? 'wss' : 'ws'}://${host}:${port}`;
 
     const newSocket = io(wsUrl, {
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],
+      reconnectionAttempts: 10,
+      reconnectionDelay: 2000,
     });
 
     newSocket.on('connect', () => setConnected(true));

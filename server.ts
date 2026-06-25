@@ -7,8 +7,13 @@ import { Server as SocketIOServer } from "socket.io";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import * as XLSX from "xlsx";
+import { createClient } from "@supabase/supabase-js";
 
 dotenv.config();
+
+const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
+const supabaseKey = process.env.SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
+const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 
 // Lazily initialize GoogleGenAI with proper validation
 let generativeAI: GoogleGenAI | null = null;
@@ -877,17 +882,19 @@ app.post("/api/import-excel", express.json({ limit: '50mb' }), (req, res) => {
     const mergedCount = influencers.length - deduped.length;
     console.log(`Dedup: ${influencers.length} rows -> ${deduped.length} unique (${mergedCount} duplicates merged)`);
 
-    if (!fs.existsSync(DATASETS_DIR)) {
-      fs.mkdirSync(DATASETS_DIR, { recursive: true });
+    // On Vercel, filesystem is read-only; skip file write
+    if (!process.env.VERCEL) {
+      if (!fs.existsSync(DATASETS_DIR)) {
+        fs.mkdirSync(DATASETS_DIR, { recursive: true });
+      }
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const outputFile = `dataset_instagram_import_${timestamp}.json`;
+      const outputPath = path.join(DATASETS_DIR, outputFile);
+      fs.writeFileSync(outputPath, JSON.stringify(deduped, null, 2), 'utf-8');
+      console.log(`Imported Excel saved to ${outputFile} (${deduped.length} records, ${mergedCount} merged)`);
     }
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const outputFile = `dataset_instagram_import_${timestamp}.json`;
-    const outputPath = path.join(DATASETS_DIR, outputFile);
 
-    fs.writeFileSync(outputPath, JSON.stringify(deduped, null, 2), 'utf-8');
-
-    console.log(`Imported Excel saved to ${outputFile} (${deduped.length} records, ${mergedCount} merged)`);
-    return res.json({ success: true, records: deduped.length, file: outputFile, influencers: deduped, detectedCols, mergedCount });
+    return res.json({ success: true, records: deduped.length, influencers: deduped, detectedCols, mergedCount });
   } catch (error: any) {
     console.error('Import Excel Error:', error);
     return res.status(500).json({ error: 'Gagal mengimpor file Excel: ' + error.message });
@@ -1653,7 +1660,7 @@ async function setupStaticServing() {
 async function setupSocketIO(server: http.Server) {
   const io = new SocketIOServer(server, {
     cors: {
-      origin: process.env.NODE_ENV === "production" ? false : ["http://localhost:5173", "http://localhost:3000"],
+      origin: process.env.NODE_ENV === "production" ? false : ["http://localhost:5173", "http://localhost:3000", "https://infclsch.vercel.app"],
       methods: ["GET", "POST"],
     },
     transports: process.env.VERCEL ? ['polling'] : ['websocket', 'polling'],
@@ -1668,27 +1675,68 @@ async function setupSocketIO(server: http.Server) {
 
   const chatRooms = new Map<string, ChatMessage[]>();
 
+  async function loadChatHistory(roomId: string): Promise<ChatMessage[]> {
+    // Try Supabase first
+    if (supabase) {
+      try {
+        const { data } = await supabase
+          .from('chat_messages')
+          .select('room_id, sender, text, timestamp')
+          .eq('room_id', roomId)
+          .order('timestamp', { ascending: true });
+        if (data && data.length > 0) {
+          return data.map((m: any) => ({
+            roomId: m.room_id,
+            sender: m.sender,
+            text: m.text,
+            timestamp: m.timestamp,
+          }));
+        }
+      } catch (e) {
+        console.error('Supabase load error:', e);
+      }
+    }
+    // Fallback to in-memory
+    return chatRooms.get(roomId) || [];
+  }
+
+  async function saveChatMessage(msg: ChatMessage) {
+    // Save to Supabase if available
+    if (supabase) {
+      try {
+        await supabase.from('chat_messages').insert({
+          room_id: msg.roomId,
+          sender: msg.sender,
+          text: msg.text,
+          timestamp: msg.timestamp,
+        });
+      } catch (e) {
+        console.error('Supabase save error:', e);
+      }
+    }
+    // Always save to in-memory
+    if (!chatRooms.has(msg.roomId)) {
+      chatRooms.set(msg.roomId, []);
+    }
+    chatRooms.get(msg.roomId)!.push(msg);
+  }
+
   io.on("connection", (socket) => {
     console.log(`User connected: ${socket.id}`);
 
-    socket.on("join-room", (roomId: string) => {
+    socket.on("join-room", async (roomId: string) => {
       socket.join(roomId);
-      if (!chatRooms.has(roomId)) {
-        chatRooms.set(roomId, []);
-      }
-      socket.emit("chat-history", chatRooms.get(roomId));
+      const history = await loadChatHistory(roomId);
+      socket.emit("chat-history", history);
     });
 
     socket.on("leave-room", (roomId: string) => {
       socket.leave(roomId);
     });
 
-    socket.on("send-message", (data: ChatMessage) => {
+    socket.on("send-message", async (data: ChatMessage) => {
       const msg = { ...data, timestamp: Date.now() };
-      if (!chatRooms.has(data.roomId)) {
-        chatRooms.set(data.roomId, []);
-      }
-      chatRooms.get(data.roomId)!.push(msg);
+      await saveChatMessage(msg);
       io.to(data.roomId).emit("new-message", msg);
     });
 
