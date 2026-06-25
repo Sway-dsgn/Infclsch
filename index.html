@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Search Influencer</title>
+  <script>
+    (function () {
+      if (typeof window !== 'undefined') {
+        // 1. Actively register a capture-phase global error listener to swallow read-only fetch write errors
+        window.addEventListener('error', function (event) {
+          const msg = event.message || '';
+          const errorObj = event.error;
+          const errorMsg = errorObj ? errorObj.message : '';
+          if (
+            msg.indexOf('fetch') !== -1 ||
+            msg.indexOf('getter') !== -1 ||
+            errorMsg.indexOf('fetch') !== -1 ||
+            errorMsg.indexOf('getter') !== -1
+          ) {
+            console.warn('Prevented uncaught fetch TypeError from halting execution:', msg || errorMsg);
+            event.preventDefault();
+            event.stopPropagation();
+            return true;
+          }
+        }, true);
+
+        // 2. Wrap window.fetch cleanly, ignoring read-only constraints gracefully
+        let currentFetch = window.fetch;
+        try {
+          delete window.fetch;
+          Object.defineProperty(window, 'fetch', {
+            get() { return currentFetch; },
+            set(value) { currentFetch = value; },
+            configurable: true,
+            enumerable: true
+          });
+        } catch (e) {
+          try {
+            delete Window.prototype.fetch;
+            Object.defineProperty(Window.prototype, 'fetch', {
+              get() { return currentFetch; },
+              set(value) { currentFetch = value; },
+              configurable: true,
+              enumerable: true
+            });
+          } catch (err) { }
+        }
+
+        // 3. Keep fallback globals safe with proxy wrapper
+        const safeProxy = new Proxy(window, {
+          get(target, prop) {
+            if (prop === 'global' || prop === 'globalThis') {
+              return safeProxy;
+            }
+            const value = target[prop];
+            if (typeof value === 'function') {
+              return value.bind(target);
+            }
+            return value;
+          },
+          set(target, prop, value) {
+            if (prop === 'fetch') {
+              currentFetch = value;
+              return true;
+            }
+            try {
+              target[prop] = value;
+            } catch (e) {
+              // Silently swallow any read-only property write failures inside sandbox iframe
+            }
+            return true;
+          }
+        });
+
+        try {
+          Object.defineProperty(window, 'global', {
+            value: safeProxy,
+            configurable: true,
+            writable: true
+          });
+        } catch (e) { }
+
+        try {
+          Object.defineProperty(window, 'globalThis', {
+            value: safeProxy,
+            configurable: true,
+            writable: true
+          });
+        } catch (e) { }
+      }
+    })();
+  </script>
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+
+</html>

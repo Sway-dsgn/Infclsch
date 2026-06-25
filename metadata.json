@@ -1,0 +1,6 @@
+{
+  "name": "Influx - Influencer Marketing Platform",
+  "description": "Aplikasi digital marketing untuk mencari influencer lokal berdasarkan koordinat area, radius, followers, serta menyusun promosi brand awareness organik.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

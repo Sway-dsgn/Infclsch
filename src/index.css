@@ -1,0 +1,33 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+}
+
+/* Leaflet z-index fix for modal overlay contexts */
+.leaflet-pane,
+.leaflet-control {
+  z-index: 1 !important;
+}
+.leaflet-popup-pane {
+  z-index: 2 !important;
+}
+#application-body .leaflet-container {
+  z-index: 0;
+}
+/* Ensure map tiles don't bleed through modals */
+.fixed.z-50 .leaflet-container {
+  z-index: 0;
+}
+
+/* Fix Leaflet marker icon in dark mode */
+.dark .leaflet-popup-content-wrapper {
+  background: #1e293b;
+  color: #e2e8f0;
+}
+.dark .leaflet-popup-tip {
+  background: #1e293b;
+}
