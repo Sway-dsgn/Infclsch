@@ -64,7 +64,6 @@ export default function App() {
 
   // Loading & Results
   const [loading, setLoading] = useState<boolean>(false);
-  const [apifyLoading, setApifyLoading] = useState<boolean>(false);
   const [loadingStep, setLoadingStep] = useState<number>(0);
   const [creators, setCreators] = useState<Influencer[]>([]);
   const [currentPageNum, setCurrentPageNum] = useState<number>(1);
@@ -325,7 +324,6 @@ export default function App() {
     setLoadingStep(0);
     setSearchTriggered(true);
 
-    // Run custom loading sequence
     const timer = setInterval(() => {
       setLoadingStep(prev => {
         if (prev < loadingSteps.length - 1) {
@@ -337,79 +335,70 @@ export default function App() {
       });
     }, 900);
 
-    try {
-      const response = await fetch('/api/scout-influencers', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'X-AI-Provider': aiProvider,
-          'X-AI-API-Key': aiApiKey,
-          'X-AI-Base-URL': aiBaseUrl,
-          'X-AI-Model': aiModel,
-          'X-Gemini-API-Key': aiApiKey
-        },
-        body: JSON.stringify({
-          userLocation,
-          distanceMax,
-          categories: selectedCategories,
-          minFollowers,
-          platform: selectedPlatform
-        })
-      });
+    const promises: Promise<void>[] = [];
 
-      if (!response.ok) {
-        throw new Error('Pencarian server gagal');
-      }
-
-      const data = await response.json();
-      setCreators(data);
-      setCurrentPageNum(1);
-    } catch (err) {
-      console.error(err);
-      triggerNotification('Terjadi kegagalan server. Merangkai hasil scouting lokal alternatif berkualitas tinggi.');
-    } finally {
-      // Ensure sequence finishes beautifully
-      setTimeout(() => {
-        clearInterval(timer);
-        setLoading(false);
-      }, 5400);
-    }
-  };
-
-  // Apify search handler
-  const handleApifySearch = async () => {
-    if (!apifyApiKey) {
-      triggerNotification('Atur Apify API token di Pengaturan API terlebih dahulu.');
-      setShowApiKeyModal(true);
-      return;
-    }
-    setApifyLoading(true);
-    triggerNotification('Memulai scraping via Apify...');
-    try {
-      const { searchInstagramProfiles } = await import('./lib/apify');
-      const results = await searchInstagramProfiles(
-        apifyApiKey,
-        selectedCategories,
-        userLocation,
-        selectedPlatform === 'TikTok' ? 'TikTok' : 'Instagram'
-      );
-      if (results.length > 0) {
-        setCreators(prev => {
-          const existing = new Set(prev.map(c => c.id));
-          const newOnes = results.filter(r => !existing.has(r.id));
-          return [...prev, ...newOnes];
+    // AI / Gemini search
+    promises.push((async () => {
+      try {
+        const response = await fetch('/api/scout-influencers', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'X-AI-Provider': aiProvider,
+            'X-AI-API-Key': aiApiKey,
+            'X-AI-Base-URL': aiBaseUrl,
+            'X-AI-Model': aiModel,
+            'X-Gemini-API-Key': aiApiKey
+          },
+          body: JSON.stringify({
+            userLocation,
+            distanceMax,
+            categories: selectedCategories,
+            minFollowers,
+            platform: selectedPlatform
+          })
         });
-        setSearchTriggered(true);
+        if (!response.ok) throw new Error('AI search failed');
+        const data = await response.json();
+        setCreators(data);
         setCurrentPageNum(1);
-        triggerNotification(`${results.length} kreator berhasil di-scrape dari Apify!`);
-      } else {
-        triggerNotification('Apify tidak menemukan kreator baru.');
+      } catch (err) {
+        console.error(err);
+        triggerNotification('Terjadi kegagalan server. Merangkai hasil scouting lokal alternatif berkualitas tinggi.');
       }
-    } catch (err: any) {
-      triggerNotification('Gagal scraping Apify: ' + (err.message || 'Unknown error'));
-    } finally {
-      setApifyLoading(false);
+    })());
+
+    // Apify search (parallel)
+    if (apifyApiKey) {
+      promises.push((async () => {
+        try {
+          const { searchInstagramProfiles } = await import('./lib/apify');
+          const results = await searchInstagramProfiles(
+            apifyApiKey,
+            selectedCategories,
+            userLocation,
+            selectedPlatform === 'TikTok' ? 'TikTok' : 'Instagram'
+          );
+          if (results.length > 0) {
+            setCreators(prev => {
+              const existing = new Set(prev.map(c => c.id));
+              const newOnes = results.filter(r => !existing.has(r.id));
+              return [...prev, ...newOnes];
+            });
+            triggerNotification(`${results.length} kreator dari scraping Apify!`);
+          }
+        } catch (err: any) {
+          triggerNotification('Apify scrape: ' + (err.message || 'gagal'));
+        }
+      })());
     }
+
+    await Promise.all(promises);
+
+    setTimeout(() => {
+      clearInterval(timer);
+      setLoading(false);
+    }, 5400);
   };
 
   // Autodetect location using browser geolocation
@@ -831,18 +820,8 @@ export default function App() {
             />
 
             <button
-              onClick={handleApifySearch}
-              disabled={apifyLoading}
-              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs sm:text-sm font-medium rounded-lg flex items-center gap-1.5 shadow-sm hover:shadow transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              id="apify-scrape-btn"
-            >
-              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
-              {apifyLoading ? 'Scraping...' : 'Scrape Apify'}
-            </button>
-
-            <button
               onClick={() => fileInputRef.current?.click()}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-medium rounded-lg flex items-center gap-1.5 shadow-sm hover:shadow transition-all cursor-pointer"
+              className="px-4 py-2 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 text-xs sm:text-sm font-medium rounded-lg flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
               id="import-excel-btn"
             >
               <Upload className="w-3.5 h-3.5" />
@@ -904,13 +883,20 @@ export default function App() {
                       </div>
                       <h3 className="text-base font-bold text-slate-900 dark:text-white">Mulai Riset Pasar &amp; Scouting Influencer</h3>
                       <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mt-1.5 leading-relaxed">
-                        Pilih rentang lokasi PKL, tetapkan filter ambang followers serta niche sasaran, selanjutnya klik tombol analisis untuk mengerahkan intelijen AI.
+                        Pilih rentang lokasi PKL, tetapkan filter ambang followers serta niche sasaran, selanjutnya klik tombol analisis untuk mengerahkan Intelijen AI + scraping Instagram via Apify.
                       </p>
                       <div className="mt-6 flex flex-wrap gap-2 justify-center max-w-md">
                         <span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2.5 py-1 rounded-full font-semibold border border-slate-200/50 dark:border-slate-600">Murni &gt;= 2.000 Followers</span>
                         <span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2.5 py-1 rounded-full font-semibold border border-slate-200/50 dark:border-slate-600">Rasio Interaksi Otentik</span>
                         <span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2.5 py-1 rounded-full font-semibold border border-slate-200/50 dark:border-slate-600">Filtering Akun Bot Jabar</span>
                       </div>
+                      <button
+                        onClick={handleSearch}
+                        className="mt-6 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl transition-all cursor-pointer shadow-md hover:shadow-lg flex items-center gap-2 mx-auto"
+                      >
+                        <Search className="w-4 h-4" />
+                        {apifyApiKey ? 'Cari + Scrape Instagram' : 'Cari Influencer'}
+                      </button>
                     </div>
                   )}
 
@@ -922,9 +908,9 @@ export default function App() {
                         <Sparkles className="w-4 h-4 text-blue-500 absolute top-4 left-4 animate-pulse" />
                       </div>
                       
-                      <h3 className="text-sm font-bold text-slate-900 dark:text-white"> Saringan Berbasis AI Sedang Menyaring Database... </h3>
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-white"> Menganalisis &amp; Scraping Data Influencer... </h3>
                       <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 mb-6">
-                        Proses korelasi geospasial serta estimasi engagement berdaya aktif.
+                        AI rekomendasi{apifyApiKey ? ' + scraping Instagram via Apify' : ''} — estimasi beberapa detik.
                       </p>
 
                       <div className="w-full max-w-md space-y-2 bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl border border-slate-200 dark:border-slate-600">
