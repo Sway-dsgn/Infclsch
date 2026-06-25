@@ -59,8 +59,14 @@ export default function App() {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([
     'Lifestyle', 'Kuliner', 'Fashion', 'Gaming', 'Edukasi', 'Daily vlog'
   ]);
+  const [openCollabOnly, setOpenCollabOnly] = useState<boolean>(false);
 
   const ITEMS_PER_PAGE = 10;
+
+  const isOpenCollab = (c: Influencer) => {
+    const bio = (c.contentType || '').toLowerCase();
+    return /collab|endorse|business.?inquiry|dm (for|open)|pr.?friendly|brand.?deal|partner|kerjasama|sponsor|promo|paid.?partner/i.test(bio);
+  };
 
   // Loading & Results
   const [loading, setLoading] = useState<boolean>(false);
@@ -73,6 +79,7 @@ export default function App() {
   const filteredCreators = creators.filter(c => {
     if (selectedPlatform !== 'Semua' && c.platform !== selectedPlatform) return false;
     if (c.followers < minFollowers) return false;
+    if (openCollabOnly && !isOpenCollab(c)) return false;
     return true;
   });
   const [geoStatus, setGeoStatus] = useState<string>('');
@@ -951,6 +958,17 @@ export default function App() {
                         </div>
                         <div className="flex items-center gap-2">
                           <button
+                            onClick={() => setOpenCollabOnly(!openCollabOnly)}
+                            className={`text-[10px] font-bold px-2.5 py-1 rounded-full border transition-all cursor-pointer flex items-center gap-1 ${
+                              openCollabOnly
+                                ? 'bg-green-600 text-white border-green-600'
+                                : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600'
+                            }`}
+                          >
+                            Open Collab
+                            {openCollabOnly && <span className="text-[9px] opacity-80 ml-0.5">({filteredCreators.length})</span>}
+                          </button>
+                          <button
                             onClick={() => setShowMapView(!showMapView)}
                             className={`text-[10px] font-bold px-2.5 py-1 rounded-full border transition-all cursor-pointer flex items-center gap-1 ${
                               showMapView
@@ -1028,6 +1046,11 @@ export default function App() {
                                           <span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded font-bold border border-slate-200/50 dark:border-slate-600">
                                             {creator.category}
                                           </span>
+                                          {isOpenCollab(creator) && (
+                                            <span className="text-[10px] bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 px-2 py-0.5 rounded font-bold border border-green-200 dark:border-green-700 flex items-center gap-1">
+                                              Open Collab
+                                            </span>
+                                          )}
                                         </div>
                                         <div className="flex items-center gap-1 shrink-0">
                                           <button
@@ -1481,6 +1504,11 @@ export default function App() {
                               <span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded font-bold">
                                 {creator.category}
                               </span>
+                              {isOpenCollab(creator) && (
+                                <span className="text-[10px] bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 px-2 py-0.5 rounded font-bold border border-green-200 dark:border-green-700">
+                                  Open Collab
+                                </span>
+                              )}
                             </div>
                             <button
                               onClick={() => toggleFavorite(creator)}
