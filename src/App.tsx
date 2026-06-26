@@ -155,7 +155,7 @@ export default function App() {
   });
 
   // Reset to page 1 when filters change
-  useEffect(() => { setCurrentPageNum(1); }, [selectedPlatform, minFollowers, selectedCategories]);
+  useEffect(() => { setCurrentPageNum(1); }, [selectedPlatform, minFollowers, selectedCategories, openCollabOnly]);
 
   const [apifyApiKey, setApifyApiKey] = useState<string>(() => {
     return localStorage.getItem('apify_api_key') || '';
@@ -374,7 +374,12 @@ export default function App() {
         });
         if (!response.ok) throw new Error('AI search failed');
         const data = await response.json();
-        setCreators(data);
+        setCreators(prev => {
+          const apifyOnly = prev.filter(c => c.id.startsWith('apify-') || c.id.startsWith('scraper_'));
+          const existing = new Set(apifyOnly.map(c => c.id));
+          const aiNew = data.filter((c: any) => !existing.has(c.id));
+          return [...aiNew, ...apifyOnly];
+        });
         setCurrentPageNum(1);
       } catch (err) {
         console.error(err);
@@ -395,8 +400,8 @@ export default function App() {
           );
           if (results.length > 0) {
             setCreators(prev => {
-              const nonApify = prev.filter(c => !c.id.startsWith('apify-'));
-              const existing = new Set(nonApify.map(c => c.id));
+              const nonApify = prev.filter(c => !c.id.startsWith('apify-') && !c.id.startsWith('scraper_'));
+              const existing = new Set(prev.map(c => c.id));
               const newOnes = results.filter(r => !existing.has(r.id));
               return [...nonApify, ...newOnes];
             });
@@ -1098,7 +1103,7 @@ export default function App() {
                                             <Heart className={`w-4 h-4 ${favorites.some(f => f.id === creator.id) ? 'fill-rose-500' : ''}`} />
                                           </button>
                                           <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono flex items-center gap-0.5 font-bold">
-                                            <MapPin className="w-3.5 h-3.5 text-slate-404 dark:text-slate-500" />
+                                            <MapPin className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
                                             {creator.distanceKm} km
                                           </p>
                                         </div>

@@ -115,7 +115,7 @@ function extractJsonArrayOrObject(text: string): any {
 
 const DATASETS_DIR = path.join(process.cwd(), 'datasets');
 const app = express();
-const PORT = process.env.PORT ? parseInt(process.env.PORT) : 0;
+const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
 
 app.use(express.json({ limit: '10mb' }));
 
@@ -542,10 +542,10 @@ Response JSON Schema:
       return res.json(parsedData);
     }
 
-    // Jika ada data Apify, bypass Gemini sepenuhnya agar tidak error karena file terlalu besar
+    // Jika ada data Apify dan user pake provider default (bukan custom), merge dengan hasil AI
     const apifyList = loadApifyData();
-    if (apifyList.length > 0 && (locationTerm.toLowerCase().replace(/[^a-z]/g, '') === "solo" || locationTerm.toLowerCase().includes("surakarta"))) {
-      console.log("Apify results found! Bypassing Gemini to return scraped dataset directly.");
+    if (apifyList.length > 0 && (locationTerm.toLowerCase().replace(/[^a-z]/g, '') === "solo" || locationTerm.toLowerCase().includes("surakarta")) && aiProvider === 'gemini') {
+      console.log("Apify results found! Merging with AI results.");
       return returnDynamicFallback(locationTerm, maxDist, catList, followersLimit, targetPlatform, res, apifyList);
     }
 
@@ -1039,7 +1039,7 @@ function loadApifyData(): any[] {
     if (!fs.existsSync(DATASETS_DIR)) return [];
     const files = fs.readdirSync(DATASETS_DIR);
     const dataFiles = files.filter(f => 
-      (f.startsWith('apify_results') || f.startsWith('dataset_instagram-scraper') || f.startsWith('dataset_instagram_import')) && 
+      (f.startsWith('apify_results') || f.startsWith('dataset_instagram-scraper') || f.startsWith('dataset_instagram_import') || f.startsWith('scraper_data')) && 
       f.endsWith('.json')
     );
     
@@ -1273,6 +1273,57 @@ function returnDynamicFallback(userLocation: string, maxDist: number, categories
 
   return res.json(filtered);
 }
+
+// API Route: Import data scraper maps (Google Maps / scraping results)
+app.post("/api/import-scraper-data", express.json({ limit: '50mb' }), (req, res) => {
+  try {
+    const { data, source } = req.body;
+    if (!data || !Array.isArray(data) || data.length === 0) {
+      return res.status(400).json({ error: 'Tidak ada data scraper yang diterima.' });
+    }
+
+    const mapped = data.map((item: any, index: number) => ({
+      id: `scraper_${Date.now()}_${index}`,
+      name: item.name || item.nama || item.title || `Tempat ${index + 1}`,
+      username: item.instagram || item.ig || item.username
+        ? `@${(item.instagram || item.ig || item.username).replace('@', '').trim()}`
+        : `@scraper_${index + 1}`,
+      platform: 'Instagram' as const,
+      location: item.address || item.alamat || item.location || item.kota || 'N/A',
+      distanceKm: item.distanceKm || item.jarak || 0,
+      followers: item.followers || 0,
+      engagementRate: item.engagementRate || item.er || 0,
+      category: item.category || item.kategori || 'Lifestyle',
+      contentType: item.description || item.deskripsi || item.about || `Data dari ${source || 'scraper maps'}`,
+      whyFits: `Data hasil scraping ${source || 'maps'}. ${item.rating ? `Rating: ${item.rating}/5.` : ''}`,
+      contactMethod: item.contactMethod || item.kontak || item.phone || item.telepon || 'DM Instagram',
+      estimatedLikes: item.estimatedLikes || item.likes || 0,
+      estimatedComments: item.estimatedComments || item.comments || 0,
+      latitude: item.latitude || item.lat || item.latitud,
+      longitude: item.longitude || item.lng || item.lon || item.longitud,
+      instagramUrl: item.instagramUrl || item.igUrl || item.instagram_url || item.link_ig,
+      placeName: item.placeName || item.place_name || item.nama_tempat || item.name,
+      rating: item.rating || 0,
+      reviewsCount: item.reviewsCount || item.reviews_count || item.ulasan || 0,
+    }));
+
+    if (!process.env.VERCEL) {
+      if (!fs.existsSync(DATASETS_DIR)) {
+        fs.mkdirSync(DATASETS_DIR, { recursive: true });
+      }
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const outputFile = `scraper_data_${timestamp}.json`;
+      const outputPath = path.join(DATASETS_DIR, outputFile);
+      fs.writeFileSync(outputPath, JSON.stringify(mapped, null, 2), 'utf-8');
+      console.log(`Scraper data saved to ${outputFile} (${mapped.length} records)`);
+    }
+
+    return res.json({ success: true, records: mapped.length, influencers: mapped });
+  } catch (error: any) {
+    console.error('Import scraper error:', error);
+    return res.status(500).json({ error: 'Gagal mengimpor data scraper: ' + error.message });
+  }
+});
 
 // API Route: Generate Personalized DM/Email Template in Indonesian
 app.post("/api/generate-dm", async (req, res) => {
@@ -1667,8 +1718,10 @@ async function setupStaticServing() {
 async function setupSocketIO(server: http.Server) {
   const io = new SocketIOServer(server, {
     cors: {
-      origin: process.env.NODE_ENV === "production" ? false : ["http://localhost:5173", "http://localhost:3000", "https://infclsch.vercel.app"],
-      methods: ["GET", "POST"],
+      origin: process.env.NODE_ENV === "production"
+        ? ["https://infclsch.vercel.app", ...(process.env.APP_URL ? [process.env.APP_URL] : [])]
+        : ["http://localhost:5173", "http://localhost:3000", "http://localhost:3001"],
+      methods: ["GET", "POST", "PUT", "DELETE"],
     },
     transports: process.env.VERCEL ? ['polling'] : ['websocket', 'polling'],
   });

@@ -6,13 +6,19 @@ export interface Influencer {
   location: string;
   distanceKm: number;
   followers: number;
-  engagementRate: number; // e.g. 4.5 (%)
+  engagementRate: number;
   category: string;
   contentType: string;
   whyFits: string;
   contactMethod: string;
   estimatedLikes: number;
   estimatedComments: number;
+  latitude?: number;
+  longitude?: number;
+  instagramUrl?: string;
+  placeName?: string;
+  rating?: number;
+  reviewsCount?: number;
 }
 
 export type CollaborationStatus = 

@@ -19,6 +19,14 @@ const matchCol = (row: Record<string, any>, key: string): string => {
   return '';
 };
 
+const matchNum = (row: Record<string, any>, keys: string[]): number => {
+  for (const key of keys) {
+    const val = matchCol(row, key);
+    if (val) return Number(val) || 0;
+  }
+  return 0;
+};
+
 const str = (v: any) => v !== null && v !== undefined ? String(v).trim() : '';
 
 export function parseExcelFile(file: File): Promise<{ influencers: Influencer[]; mergedCount: number; truncated: boolean }> {
@@ -83,6 +91,11 @@ export function parseExcelFile(file: File): Promise<{ influencers: Influencer[];
           const rawDistance = matchCol(row, 'jarak') || matchCol(row, 'distance') || matchCol(row, 'radius');
           const rawContact = matchCol(row, 'kontak') || matchCol(row, 'contact') || matchCol(row, 'dm') || matchCol(row, 'email') || matchCol(row, 'telepon') || matchCol(row, 'hp');
           const rawWhyFits = matchCol(row, 'alasan') || matchCol(row, 'notes') || matchCol(row, 'catatan');
+          const rawLat = matchNum(row, ['latitude', 'lat', 'latitud', 'lintang']);
+          const rawLng = matchNum(row, ['longitude', 'lng', 'lon', 'longitud', 'bujur']);
+          const rawIgUrl = matchCol(row, 'instagramUrl') || matchCol(row, 'igUrl') || matchCol(row, 'link_ig') || matchCol(row, 'instagram') || matchCol(row, 'ig');
+          const rawRating = matchNum(row, ['rating', 'nilai', 'star']);
+          const rawReviews = matchNum(row, ['reviewsCount', 'reviews_count', 'ulasan', 'review']);
 
           const lk = Number(rawLikes) || 0;
           const cm = Number(rawComments) || 0;
@@ -104,6 +117,11 @@ export function parseExcelFile(file: File): Promise<{ influencers: Influencer[];
             contactMethod: rawContact || 'DM Instagram',
             estimatedLikes: lk,
             estimatedComments: cm,
+            latitude: rawLat || undefined,
+            longitude: rawLng || undefined,
+            instagramUrl: rawIgUrl || undefined,
+            rating: rawRating || undefined,
+            reviewsCount: rawReviews || undefined,
           };
         });
 
